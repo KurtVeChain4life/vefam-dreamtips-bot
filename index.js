@@ -2,32 +2,42 @@ import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRow
 import { mnemonic, HDNode } from 'thor-devkit';
 import pg from 'pg';
 
-// === DATABASE SETUP (nu veilig binnen een async functie) ===
-const pool = new pg.Pool({
+const { Pool } = pg;
+
+const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
 });
 
 async function initDB() {
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS balances      (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS lastdaily     (key TEXT PRIMARY KEY, timestamp BIGINT);
-    CREATE TABLE IF NOT EXISTS shopitems     (id TEXT PRIMARY KEY, data JSONB);
-    CREATE TABLE IF NOT EXISTS wallets      (guildId TEXT PRIMARY KEY, seed TEXT, nextIndex INTEGER DEFAULT 0);
-  `);
-  console.log('Database tables klaar');
+  try {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS balances      (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
+      CREATE TABLE IF NOT EXISTS lastdaily     (key TEXT PRIMARY KEY, timestamp BIGINT);
+      CREATE TABLE IF NOT EXISTS shopitems     (id TEXT PRIMARY KEY, data JSONB);
+      CREATE TABLE IF NOT EXISTS wallets       ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
+    `);
+    console.log('Database tables klaar');
+  } catch (e) {
+    console.error('DB init fout:', e);
+  }
 }
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
+  ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT EENMALIG
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT EENMALIG!!!
 
 client.once('ready', async () => {
-  await initDB(); // ← nu pas de tables aanmaken
+  await initDB();
 
-  console.log(`${client.user.tag} → 100% PERMANENT LIVE`);
+  console.log(`${client.user.tag} → 100% LIVE MET PERMANENTE DATABASE`);
 
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS'),
@@ -49,14 +59,15 @@ client.once('ready', async () => {
     await guild.commands.set([]);
     await new Promise(r => setTimeout(r, 5000));
     await guild.commands.set(commands);
+    console.log(`✔ ${guild.name} → commands schoon`);
   }
 
-  console.log('Alle commands schoon & klaar – bot 100% live');
+  console.log('Bot volledig klaar – alles blijft bewaard!');
 });
 
-// === ALLE INTERACTIONS (exact hetzelfde als vorige versie, maar nu werkt DB) ===
 client.on('interactionCreate', async i => {
   if (!i.isChatInputCommand() && !i.isButton()) return;
+
   const userId = i.user.id;
   const guildId = i.guild?.id || 'dm';
   const key = `${userId}:${guildId}`;
@@ -79,7 +90,7 @@ client.on('interactionCreate', async i => {
         await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1,$2,$3)', [guildId, Buffer.from(seed).toString('hex'), 1]);
       } else {
         masterNode = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
-        nextIndex = row.nextIndex;
+        nextIndex = row.nextIndex || 0;
         await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
       }
       const derived = masterNode.derive(nextIndex);
@@ -89,8 +100,8 @@ client.on('interactionCreate', async i => {
 
     else if (i.commandName === 'daily') {
       const now = Date.now();
-      const row = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
-      const last = row.rows[0]?.timestamp || 0;
+      const res = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
+      const last = res.rows[0]?.timestamp || 0;
       if (now - last < 86_400_000) {
         const hrs = Math.ceil((86_400_000 - (now - last)) / 3_600_000);
         return i.reply({ content: `Nog ${hrs} uur wachten`, ephemeral: true });
@@ -101,11 +112,11 @@ client.on('interactionCreate', async i => {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS!').setDescription(`**${reward} BOOBS** erbij!`)] });
     }
 
-    // (tip, leaderboard, shop, addnft, buy blijven exact zoals in mijn vorige bericht – copy-paste die er gewoon onder)
+    // Voeg hier later tip, leaderboard, shop, addnft, buy toe – die komen in de volgende versie als deze draait
 
   } catch (err) {
-    console.error('DB Error:', err);
-    if (!i.replied) await i.reply({ content: 'Database fout – herstart bot even', ephemeral: true });
+    console.error('Fout:', err);
+    if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis (DB)', ephemeral: true });
   }
 });
 
