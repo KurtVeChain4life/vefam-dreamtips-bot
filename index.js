@@ -12,14 +12,14 @@ const client = new Client({
 
 const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
 
-const wallets   = new Map();
-const balances  = new Map();
+const wallets   = new Map(); // guildId → { masterNode, nextIndex }
+const balances  = new Map(); // "userId:guildId" → aantal BOOBS
 const points    = new Map();
 const lastDaily = new Map();
 const shopItems = new Map();
 
 client.once('ready', async () => {
-  console.log(`${client.user.tag} → Schoonmaak & registratie gestart`);
+  console.log(`${client.user.tag} → FINAL CLEANUP GESTART`);
 
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
@@ -28,22 +28,23 @@ client.once('ready', async () => {
       .addIntegerOption(o => o.setName('amount').setDescription('Hoeveel').setRequired(true).setMinValue(1)),
     new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS (1× per 24 uur)'),
     new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
-    new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
+    new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'), // ← exact "wallet"
     new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
     new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe aan de shop')
       .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
       .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
       .addIntegerOption(o => o.setName('prijs').setDescription('Prijs in BOOBS').setRequired(true).setMinValue(1))
       .addAttachmentOption(o => o.setName('afbeelding').setDescription('Afbeelding').setRequired(true))
-  ];
+  ].map(c => c.toJSON());
 
   for (const guild of client.guilds.cache.values()) {
-    await guild.commands.set([]);
-    await new Promise(r => setTimeout(r, 3000));
-    await guild.commands.set(commands.map(c => c.toJSON()));
-    console.log(`✔ ${guild.name} → commands schoon & uniek`);
+    await guild.commands.set([]);                    // alles weg
+    await new Promise(r => setTimeout(r, 5000));     // 5 sec wachten
+    await guild.commands.set(commands);              // nieuwe erin
+    console.log(`✔ ${guild.name} → 100% schoon & uniek`);
   }
-  console.log('Bot 100% klaar – ALLE commands werken nu direct!');
+
+  console.log('FINAL CLEANUP KLAAR → geen dubbels + /wallet werkt!');
 });
 
 client.on('interactionCreate', async i => {
@@ -54,7 +55,6 @@ client.on('interactionCreate', async i => {
   const key = `${userId}:${guildId}`;
 
   try {
-    // ==== ALLE COMMANDS ====
     if (i.commandName === 'balance') {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS Stats')
         .addFields(
@@ -72,7 +72,7 @@ client.on('interactionCreate', async i => {
         wallets.set(guildId, data);
       }
       const derived = data.masterNode.derive(data.nextIndex++);
-      const address = '0x' + derived.address.toString('hex');
+      const address = '0x' +  derived.address.toString('hex');
       await i.reply({ content: `**Je persoonlijke VeChain wallet**\n\`${address}\``, ephemeral: true });
     }
 
@@ -148,15 +148,15 @@ client.on('interactionCreate', async i => {
       balances.set(key, bal - item.price);
       shopItems.delete(id);
       try { await (await client.users.fetch(OWNER_ID)).send(`NFT VERKOCHT!\nKoper: ${i.user.tag}\nNFT: ${item.title}\nPrijs: ${item.price} BOOBS\nAfbeelding: ${item.imageUrl}`); } catch {}
-      await i.reply({ content: `Je kocht **${item.title}** voor **${item.price} BOOBS**!` });
+      await i.reply({ content: `Je kocht **${item.title}** voor **${item.price} BOOBS**! NFT komt zo.` });
     }
   } catch (err) {
-    console.error('Error:', err);
+    console.error('Interaction error:', err);
     if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis...', ephemeral: true });
   }
 });
 
-// BOOBS per 3 tekens
+// BOOBS per 3 tekens (Dreamer / BitGirlowner)
 client.on('messageCreate', msg => {
   if (msg.author.bot || !msg.guild || !msg.member) return;
   const key = `${msg.author.id}:${msg.guild.id}`;
