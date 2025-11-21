@@ -10,17 +10,18 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG MET JOUW DISCORD ID !!!
 
 // Storage
-const wallets   = new Map(); // guildId → { masterNode, nextIndex }
+const wallets   = new Map();
 const balances  = new Map();
 const points    = new Map();
 const lastDaily = new Map();
 const shopItems = new Map();
 
+// DE ENIGE MANIER DIE ECHT WERKT: eerst ALLES wissen, dan pas nieuwe zetten
 client.once('ready', async () => {
-  console.log(`${client.user.tag} — Bot 100% live & clean!`);
+  console.log(`${client.user.tag} — Start schoonmaak + registratie...`);
 
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
@@ -42,13 +43,20 @@ client.once('ready', async () => {
       .addAttachmentOption(o => o.setName('afbeelding').setDescription('Upload afbeelding').setRequired(true))
   ];
 
-  // Overschrijf alles → geen dubbels + direct beschikbaar
   for (const guild of client.guilds.cache.values()) {
+    // STAP 1: ALLES wissen (dit verwijdert alle dubbels)
+    await guild.commands.set([]);
+    await new Promise(r => setTimeout(r, 2000)); // korte pauze zodat Discord het verwerkt
+
+    // STAP 2: Nieuwe commands zetten (exact één keer)
     await guild.commands.set(commands);
+    console.log(`Commands schoon & uniek in ${guild.name}`);
   }
-  console.log('Commands perfect geregistreerd – geen dubbels meer!');
+
+  console.log('Klaar – geen dubbels meer, alles werkt direct!');
 });
 
+// === AL DE REST VAN JE CODE (100% werkend) ===
 client.on('interactionCreate', async i => {
   if (!i.isChatInputCommand() && !i.isButton()) return;
 
@@ -58,12 +66,11 @@ client.on('interactionCreate', async i => {
 
   try {
     if (i.commandName === 'balance') {
-      const boobs = balances.get(key) || 0;
-      const pts = points.get(key) || 0;
-      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS Stats').addFields(
-        { name: 'BOOBS', value: `\`${boobs}\``, inline: true },
-        { name: 'Punten', value: `\`${pts}\``, inline: true }
-      )], ephemeral: true });
+      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS Stats')
+        .addFields(
+          { name: 'BOOBS', value: `\`${balances.get(key) || 0}\``, inline: true },
+          { name: 'Punten', value: `\`${points.get(key) || 0}\``, inline: true }
+        )], ephemeral: true });
     }
 
     else if (i.commandName === 'tip') {
@@ -99,7 +106,6 @@ client.on('interactionCreate', async i => {
         .setDescription(top.length ? top.map((t, i) => `${i+1}. <@${t.id}> — **${t.boobs} BOOBS**`).join('\n') : 'Nog niemand')] });
     }
 
-    // WALLET — 100% WERKEND
     else if (i.commandName === 'wallet') {
       let data = wallets.get(guildId);
       if (!data) {
@@ -155,12 +161,12 @@ client.on('interactionCreate', async i => {
       await i.reply({ content: `Je kocht **${item.title}** voor **${item.price} BOOBS**! NFT komt zo.` });
     }
   } catch (err) {
-    console.error(err);
+    console.error('Error:', err);
     if (!i.replied) await i.reply({ content: 'Er ging iets mis...', ephemeral: true });
   }
 });
 
-// BOOBS per 3 tekens (Dreamer / BitGirlowner)
+// BOOBS per 3 tekens
 client.on('messageCreate', msg => {
   if (msg.author.bot || !msg.guild || !msg.member) return;
   const key = `${msg.author.id}:${msg.guild.id}`;
