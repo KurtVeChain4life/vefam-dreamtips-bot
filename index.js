@@ -10,18 +10,28 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW ECHTE DISCORD ID !!!
 
 // Storage
-const wallets   = new Map(); // guildId → { masterNode, nextIndex }
-const balances  = new Map(); // userId:guildId → BOOBS
-const points    = new Map(); // userId:guildId → punten
-const lastDaily = new Map(); // userId:guildId → timestamp
+const wallets   = new Map();
+const balances  = new Map();
+const points    = new Map();
+const lastDaily = new Map();
 const shopItems = new Map(); // id → { title, desc, price, imageUrl }
 
 client.once('ready', async () => {
   console.log(`${client.user.tag} — BOOBS economie + NFT shop volledig live!`);
 
+  // STAP 1: Alle oude commands wissen (voorkomt dubbels)
+  for (const guild of client.guilds.cache.values()) {
+    await guild.commands.set([]);
+    console.log(`Oude commands gewist in ${guild.name}`);
+  }
+
+  // Wacht even zodat Discord alles verwerkt
+  await new Promise(r => setTimeout(r, 3000));
+
+  // STAP 2: Nieuwe commands netjes registreren (één keer!)
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
     new SlashCommandBuilder()
@@ -44,8 +54,10 @@ client.once('ready', async () => {
 
   for (const guild of client.guilds.cache.values()) {
     await guild.commands.set(commands);
+    console.log(`Nieuwe commands geregistreerd in ${guild.name}`);
   }
-  console.log('Alle commands geregistreerd!');
+
+  console.log('Alle commands netjes en zonder dubbels geregistreerd!');
 });
 
 client.on('interactionCreate', async i => {
@@ -180,7 +192,7 @@ client.on('interactionCreate', async i => {
   }
 });
 
-// ── BOOBS PER 3 KARAKTERS (alleen Dreamer of BitGirlowner) + punten voor iedereen ──
+// ── BOOBS per 3 karakters (alleen Dreamer of BitGirlowner) + punten voor iedereen ──
 client.on('messageCreate', async msg => {
   if (msg.author.bot) return;
   if (!msg.guild || !msg.member) return;
@@ -198,7 +210,7 @@ client.on('messageCreate', async msg => {
 
   if (hasDreamer || hasBitGirlowner) {
     const characters = msg.content.length;
-    const boobsEarned = Math.floor(characters / 3); // 1 BOOBS per 3 karakters
+    const boobsEarned = Math.floor(characters / 3);
     if (boobsEarned > 0) {
       balances.set(key, (balances.get(key) || 0) + boobsEarned);
     }
