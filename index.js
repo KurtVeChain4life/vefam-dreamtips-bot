@@ -10,7 +10,7 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // <-- VERVANG DIT MET JOUW DISCORD ID !!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
 
 const wallets   = new Map();
 const balances  = new Map();
@@ -43,7 +43,7 @@ client.once('ready', async () => {
     await guild.commands.set(commands.map(c => c.toJSON()));
     console.log(`✔ ${guild.name} → commands schoon & uniek`);
   }
-  console.log('Bot 100% klaar – commands staan 1× en werken direct!');
+  console.log('Bot 100% klaar – ALLE commands werken nu direct!');
 });
 
 client.on('interactionCreate', async i => {
@@ -54,6 +54,7 @@ client.on('interactionCreate', async i => {
   const key = `${userId}:${guildId}`;
 
   try {
+    // ==== ALLE COMMANDS ====
     if (i.commandName === 'balance') {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS Stats')
         .addFields(
@@ -61,6 +62,7 @@ client.on('interactionCreate', async i => {
           { name: 'Punten', value: `\`${points.get(key) || 0}\``, inline: true }
         )], ephemeral: true });
     }
+
     else if (i.commandName === 'wallet') {
       let data = wallets.get(guildId);
       if (!data) {
@@ -73,6 +75,7 @@ client.on('interactionCreate', async i => {
       const address = '0x' + derived.address.toString('hex');
       await i.reply({ content: `**Je persoonlijke VeChain wallet**\n\`${address}\``, ephemeral: true });
     }
+
     else if (i.commandName === 'daily') {
       const now = Date.now();
       const last = lastDaily.get(key) || 0;
@@ -85,6 +88,7 @@ client.on('interactionCreate', async i => {
       lastDaily.set(key, now);
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS!').setDescription(`**${reward} BOOBS** erbij!`)] });
     }
+
     else if (i.commandName === 'tip') {
       const target = i.options.getUser('user');
       const amount = i.options.getInteger('amount');
@@ -95,6 +99,7 @@ client.on('interactionCreate', async i => {
       balances.set(`${target.id}:${guildId}`, (balances.get(`${target.id}:${guildId}`) || 0) + amount);
       await i.reply(`**${i.user} tipped ${amount} BOOBS naar ${target}!**`);
     }
+
     else if (i.commandName === 'leaderboard') {
       const top = [...balances.entries()]
         .map(([k, v]) => ({ id: k.split(':')[0], boobs: v }))
@@ -103,13 +108,55 @@ client.on('interactionCreate', async i => {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff1493').setTitle('Top 10 BOOBS Kings')
         .setDescription(top.length ? top.map((t, i) => `${i+1}. <@${t.id}> — **${t.boobs} BOOBS**`).join('\n') : 'Nog niemand')] });
     }
-    // (shop & addnft kun je later weer toevoegen – voor nu eerst basics werkend)
+
+    else if (i.commandName === 'shop') {
+      if (shopItems.size === 0) return i.reply({ content: 'Shop is momenteel leeg!', ephemeral: true });
+      const embeds = [];
+      const rows = [];
+      for (const [id, item] of shopItems) {
+        embeds.push(new EmbedBuilder()
+          .setColor('#ff69b4')
+          .setTitle(item.title)
+          .setDescription(`${item.desc}\n\n**Prijs:** ${item.price} BOOBS`)
+          .setImage(item.imageUrl)
+          .setFooter({ text: `ID: ${id}` }));
+        rows.push(new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`buy_${id}`).setLabel(`Koop voor ${item.price} BOOBS`).setStyle(ButtonStyle.Success)
+        ));
+      }
+      await i.reply({ embeds, components: rows });
+    }
+
+    else if (i.commandName === 'addnft') {
+      if (userId !== OWNER_ID) return i.reply({ content: 'Alleen de owner!', ephemeral: true });
+      const title = i.options.getString('titel');
+      const desc  = i.options.getString('beschrijving');
+      const price = i.options.getInteger('prijs');
+      const att   = i.options.getAttachment('afbeelding');
+      if (!att?.contentType?.startsWith('image/')) return i.reply({ content: 'Alleen afbeeldingen!', ephemeral: true });
+      const id = Date.now().toString();
+      shopItems.set(id, { title, desc, price, imageUrl: att.url });
+      await i.reply({ content: `NFT toegevoegd! **${title}** — ${price} BOOBS`, ephemeral: true });
+    }
+
+    else if (i.isButton() && i.customId.startsWith('buy_')) {
+      const id = i.customId.slice(4);
+      const item = shopItems.get(id);
+      if (!item) return i.reply({ content: 'Al verkocht!', ephemeral: true });
+      const bal = balances.get(key) || 0;
+      if (bal < item.price) return i.reply({ content: 'Niet genoeg BOOBS!', ephemeral: true });
+      balances.set(key, bal - item.price);
+      shopItems.delete(id);
+      try { await (await client.users.fetch(OWNER_ID)).send(`NFT VERKOCHT!\nKoper: ${i.user.tag}\nNFT: ${item.title}\nPrijs: ${item.price} BOOBS\nAfbeelding: ${item.imageUrl}`); } catch {}
+      await i.reply({ content: `Je kocht **${item.title}** voor **${item.price} BOOBS**!` });
+    }
   } catch (err) {
-    console.error('Interaction error:', err);
-    if (!i.replied) await i.reply({ content: 'Er ging iets mis...', ephemeral: true });
+    console.error('Error:', err);
+    if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis...', ephemeral: true });
   }
 });
 
+// BOOBS per 3 tekens
 client.on('messageCreate', msg => {
   if (msg.author.bot || !msg.guild || !msg.member) return;
   const key = `${msg.author.id}:${msg.guild.id}`;
