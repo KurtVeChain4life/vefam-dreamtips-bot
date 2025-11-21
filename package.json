@@ -1,16 +1,12 @@
 {
   "name": "vechain-dreamtips-bot",
   "version": "1.0.0",
-  "description": "VeChain Dreamtips & More Discord bot",
   "main": "index.js",
-  "scripts": {
-    "start": "npx prisma migrate deploy && npx prisma generate && node index.js",
-    "dev": "node index.js"
-  },
+  "scripts": "node .",
+  "type": "module",
   "dependencies": {
-    "discord.js": "^14.14.1",
-    "@vechain/sdk-core": "^1.9.0",
-    "@prisma/client": "^5.7.1",
-    "prisma": "^5.7.1"
+    "discord.js": "^14.15.3",
+    "thor-devkit": "^2.1.4",
+    "crypto-js": "^4.2.0"
   }
 }
