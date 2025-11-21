@@ -10,7 +10,7 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
+const OWNER_ID = 'YOUR_USER_ID_HERE'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
 
 // Storage
 const wallets   = new Map(); // guildId → { masterNode, nextIndex }
@@ -20,7 +20,7 @@ const lastDaily = new Map(); // userId:guildId → timestamp
 const shopItems = new Map(); // id → { title, desc, price, imageUrl }
 
 client.once('ready', async () => {
-  console.log(`${client.user.tag} — BOOBS NFT Shop & economie live!`);
+  console.log(`${client.user.tag} — BOOBS economie + NFT shop volledig live!`);
 
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
@@ -79,23 +79,18 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /daily (exact 1× per 24 uur) ──
+  // ── /daily (1× per 24 uur) ──
   if (i.commandName === 'daily') {
     const now = Date.now();
     const last = lastDaily.get(key) || 0;
-
-    if (now - last < 86_400_000) { // 24 uur = 86.400.000 ms
-      const remainingHours = Math.ceil((86_400_000 - (now - last)) / (3_600_000));
+    if (now - last < 86_400_000) {
+      const remainingHours = Math.ceil((86_400_000 - (now - last)) / 3_600_000);
       return i.reply({ content: `Je hebt je daily al geclaimed!\nVolgende mogelijk over **${remainingHours} uur**.`, ephemeral: true });
     }
-
     const reward = Math.floor(Math.random() * 401) + 100;
     balances.set(key, (balances.get(key) || 0) + reward);
     lastDaily.set(key, now);
-
-    const embed = new EmbedBuilder()
-      .setColor('#ff69b4')
-      .setTitle('Daily BOOBS geclaimed!')
+    const embed = new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS geclaimed!')
       .setDescription(`**${reward} BOOBS** zijn op je rekening gestort!\nKom morgen terug voor meer`);
     await i.reply({ embeds: [embed] });
     return;
@@ -136,10 +131,8 @@ client.on('interactionCreate', async i => {
     const price = i.options.getInteger('prijs');
     const att   = i.options.getAttachment('afbeelding');
     if (!att.contentType?.startsWith('image/')) return i.reply({ content: 'Alleen afbeeldingen!', ephemeral: true });
-
     const id = Date.now().toString();
     shopItems.set(id, { title, desc, price, imageUrl: att.url });
-
     await i.reply({ content: `NFT toegevoegd!\n**${title}** — ${price} BOOBS`, ephemeral: true });
     return;
   }
@@ -147,10 +140,8 @@ client.on('interactionCreate', async i => {
   // ── /shop ──
   if (i.commandName === 'shop') {
     if (shopItems.size === 0) return i.reply({ content: 'Shop is momenteel leeg!', ephemeral: true });
-
     const embeds = [];
     const components = [];
-
     for (const [id, item] of shopItems) {
       const embed = new EmbedBuilder()
         .setColor('#ff69b4')
@@ -158,18 +149,15 @@ client.on('interactionCreate', async i => {
         .setDescription(`${item.desc}\n\n**Prijs:** ${item.price} BOOBS`)
         .setImage(item.imageUrl)
         .setFooter({ text: `ID: ${id}` });
-
       const row = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setCustomId(`buy_${id}`)
           .setLabel(`Koop voor ${item.price} BOOBS`)
           .setStyle(ButtonStyle.Success)
       );
-
       embeds.push(embed);
       components.push(row);
     }
-
     await i.reply({ embeds, components });
     return;
   }
@@ -179,28 +167,42 @@ client.on('interactionCreate', async i => {
     const id = i.customId.slice(4);
     const item = shopItems.get(id);
     if (!item) return i.reply({ content: 'Deze NFT is al verkocht!', ephemeral: true });
-
     const buyerBoobs = balances.get(key) || 0;
     if (buyerBoobs < item.price) return i.reply({ content: `Niet genoeg BOOBS! (nodig: ${item.price})`, ephemeral: true });
-
     balances.set(key, buyerBoobs - item.price);
     shopItems.delete(id);
-
     try {
       const owner = await client.users.fetch(OWNER_ID);
       await owner.send(`NFT VERKOCHT!\nKoper: ${i.user.tag} (${i.user.id})\nNFT: **${item.title}**\nPrijs: ${item.price} BOOBS\nAfbeelding: ${item.imageUrl}`);
     } catch (e) {}
-
     await i.reply({ content: `Je hebt **${item.title}** gekocht voor **${item.price} BOOBS**!\nDe NFT wordt zo snel mogelijk naar je wallet gestuurd.` });
     return;
   }
 });
 
-// Punten per bericht
-client.on('messageCreate', msg => {
+// ── BOOBS PER 3 KARAKTERS (alleen Dreamer of BitGirlowner) + punten voor iedereen ──
+client.on('messageCreate', async msg => {
   if (msg.author.bot) return;
-  const key = `${msg.author.id}:${msg.guild.id}`;
+  if (!msg.guild || !msg.member) return;
+
+  const guildId = msg.guild.id;
+  const userId = msg.author.id;
+  const key = `${userId}:${guildId}`;
+
+  // Altijd +1 punt
   points.set(key, (points.get(key) || 0) + 1);
+
+  // Alleen BOOBS voor Dreamer of BitGirlowner
+  const hasDreamer = msg.member.roles.cache.some(r => r.name === 'Dreamer');
+  const hasBitGirlowner = msg.member.roles.cache.some(r => r.name === 'BitGirlowner');
+
+  if (hasDreamer || hasBitGirlowner) {
+    const characters = msg.content.length;
+    const boobsEarned = Math.floor(characters / 3); // 1 BOOBS per 3 karakters
+    if (boobsEarned > 0) {
+      balances.set(key, (balances.get(key) || 0) + boobsEarned);
+    }
+  }
 });
 
 // Wallet bij join
