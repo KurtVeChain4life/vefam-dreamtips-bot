@@ -1,9 +1,0 @@
-{
-  "build": {
-    "builder": "paketo",
-    "buildpacks": [
-      { "url": "heroku/nodejs" }
-    ]
-  },
-  "start": "node index.js"
-}
