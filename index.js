@@ -10,7 +10,7 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = 'YOUR_USER_ID_HERE'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID !!!
 
 // Storage
 const wallets   = new Map(); // guildId → { masterNode, nextIndex }
