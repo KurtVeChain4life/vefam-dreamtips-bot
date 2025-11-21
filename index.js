@@ -6,7 +6,7 @@ const client = new Client({
 });
 
 // ==== CONFIG ====
-const OWNER_ID = 'YOUR_USER_ID_HERE'; // ← VERVANG DIT MET JOUW DISCORD ID
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW DISCORD ID
 
 // ==== STORAGE ====
 const wallets   = new Map();
