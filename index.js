@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes } from 'discord.js';
 import { mnemonic, HDNode } from 'thor-devkit';
 
 const client = new Client({
@@ -10,64 +10,69 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT MET JOUW ECHTE DISCORD ID !!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG MET JOUW DISCORD ID
+const TOKEN = process.env.DISCORD_TOKEN;
+const CLIENT_ID = client.application?.id || 'JE_CLIENT_ID'; // wordt later gevuld
 
 // Storage
 const wallets   = new Map();
 const balances  = new Map();
 const points    = new Map();
 const lastDaily = new Map();
-const shopItems = new Map(); // id → { title, desc, price, imageUrl }
+const shopItems = new Map();
+
+// Alle commands één keer globaal registreren (geen dubbels ooit meer)
+const commands = [
+  new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
+  new SlashCommandBuilder()
+    .setName('tip')
+    .setDescription('Tip iemand BOOBS')
+    .addUserOption(o => o.setName('user').setDescription('Wie krijgt de BOOBS?').setRequired(true))
+    .addIntegerOption(o => o.setName('amount').setDescription('Hoeveel BOOBS?').setRequired(true).setMinValue(1)),
+  new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS (1× per 24 uur)'),
+  new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
+  new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
+  new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
+  new SlashCommandBuilder()
+    .setName('addnft')
+    .setDescription('(Owner) Voeg NFT toe aan de shop')
+    .addStringOption(o => o.setName('titel').setDescription('Titel van de NFT').setRequired(true))
+    .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
+    .addIntegerOption(o => o.setName('prijs').setDescription('Prijs in BOOBS').setRequired(true).setMinValue(1))
+    .addAttachmentOption(o => o.setName('afbeelding').setDescription('Upload de afbeelding').setRequired(true))
+];
 
 client.once('ready', async () => {
-  console.log(`${client.user.tag} — BOOBS economie + NFT shop volledig live!`);
+  console.log(`${client.user.tag} — BOOBS economie + NFT shop 100% live & clean!`);
 
-  // STAP 1: Alle oude commands wissen (voorkomt dubbels)
+  // 1. Eerst alle oude guild-commands wissen
   for (const guild of client.guilds.cache.values()) {
     await guild.commands.set([]);
-    console.log(`Oude commands gewist in ${guild.name}`);
+    console.log(`Oude guild-commands gewist in ${guild.name}`);
   }
 
-  // Wacht even zodat Discord alles verwerkt
-  await new Promise(r => setTimeout(r, 3000));
-
-  // STAP 2: Nieuwe commands netjes registreren (één keer!)
-  const commands = [
-    new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS & punten'),
-    new SlashCommandBuilder()
-      .setName('tip')
-      .setDescription('Tip iemand BOOBS')
-      .addUserOption(o => o.setName('user').setDescription('Wie krijgt de BOOBS?').setRequired(true))
-      .addIntegerOption(o => o.setName('amount').setDescription('Hoeveel BOOBS?').setRequired(true).setMinValue(1)),
-    new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS (1× per 24 uur)'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
-    new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
-    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
-    new SlashCommandBuilder()
-      .setName('addnft')
-      .setDescription('(Owner) Voeg NFT toe aan de shop')
-      .addStringOption(o => o.setName('titel').setDescription('Titel van de NFT').setRequired(true))
-      .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
-      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs in BOOBS').setRequired(true).setMinValue(1))
-      .addAttachmentOption(o => o.setName('afbeelding').setDescription('Upload de afbeelding').setRequired(true))
-  ].map(c => c.toJSON());
-
-  for (const guild of client.guilds.cache.values()) {
-    await guild.commands.set(commands);
-    console.log(`Nieuwe commands geregistreerd in ${guild.name}`);
+  // 2. Dan één keer globaal registreren (max 1x per uur, maar dit is de enige manier zonder dubbels)
+  try {
+    console.log('Globale commands registreren... (kan 1-2 minuten duren)');
+    await REST()
+      .setToken(TOKEN)
+      .put(Routes.applicationCommands(client.user.id), { body: commands.map(c => c.toJSON()) });
+    console.log('Globale commands succesvol geregistreerd – NOOIT meer dubbels!');
+  } catch (error) {
+    console.error('Fout bij globale registratie:', error);
   }
-
-  console.log('Alle commands netjes en zonder dubbels geregistreerd!');
 });
 
+// === AL DE REST VAN JE CODE (interactionCreate, messageCreate, etc.) ===
 client.on('interactionCreate', async i => {
   if (!i.isChatInputCommand() && !i.isButton()) return;
 
   const userId = i.user.id;
-  const guildId = i.guild.id;
+  const guildId = i.guild?.id || 'dm';
   const key = `${userId}:${guildId}`;
 
-  // ── /balance ──
+  // (alle commands precies zoals in je laatste werkende versie – ik plak ze hieronder volledig)
+
   if (i.commandName === 'balance') {
     const boobs = balances.get(key) || 0;
     const pts = points.get(key) || 0;
@@ -77,7 +82,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /tip ──
   if (i.commandName === 'tip') {
     const target = i.options.getUser('user');
     const amount = i.options.getInteger('amount');
@@ -91,7 +95,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /daily (1× per 24 uur) ──
   if (i.commandName === 'daily') {
     const now = Date.now();
     const last = lastDaily.get(key) || 0;
@@ -108,7 +111,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /leaderboard ──
   if (i.commandName === 'leaderboard') {
     const top = [...balances.entries()]
       .map(([k, b]) => ({ userId: k.split(':')[0], boobs: b }))
@@ -120,7 +122,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /wallet ──
   if (i.commandName === 'wallet') {
     let data = wallets.get(guildId);
     if (!data) {
@@ -135,7 +136,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /addnft (owner only) ──
   if (i.commandName === 'addnft') {
     if (userId !== OWNER_ID) return i.reply({ content: 'Alleen de owner mag NFTs toevoegen!', ephemeral: true });
     const title = i.options.getString('titel');
@@ -149,7 +149,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── /shop ──
   if (i.commandName === 'shop') {
     if (shopItems.size === 0) return i.reply({ content: 'Shop is momenteel leeg!', ephemeral: true });
     const embeds = [];
@@ -174,7 +173,6 @@ client.on('interactionCreate', async i => {
     return;
   }
 
-  // ── Buy button ──
   if (i.isButton() && i.customId.startsWith('buy_')) {
     const id = i.customId.slice(4);
     const item = shopItems.get(id);
@@ -192,28 +190,17 @@ client.on('interactionCreate', async i => {
   }
 });
 
-// ── BOOBS per 3 karakters (alleen Dreamer of BitGirlowner) + punten voor iedereen ──
+// BOOBS per 3 karakters (alleen Dreamer/BitGirlowner) + punten voor iedereen
 client.on('messageCreate', async msg => {
-  if (msg.author.bot) return;
-  if (!msg.guild || !msg.member) return;
-
-  const guildId = msg.guild.id;
-  const userId = msg.author.id;
-  const key = `${userId}:${guildId}`;
-
-  // Altijd +1 punt
+  if (msg.author.bot || !msg.guild || !msg.member) return;
+  const key = `${msg.author.id}:${msg.guild.id}`;
   points.set(key, (points.get(key) || 0) + 1);
 
-  // Alleen BOOBS voor Dreamer of BitGirlowner
   const hasDreamer = msg.member.roles.cache.some(r => r.name === 'Dreamer');
   const hasBitGirlowner = msg.member.roles.cache.some(r => r.name === 'BitGirlowner');
-
   if (hasDreamer || hasBitGirlowner) {
-    const characters = msg.content.length;
-    const boobsEarned = Math.floor(characters / 3);
-    if (boobsEarned > 0) {
-      balances.set(key, (balances.get(key) || 0) + boobsEarned);
-    }
+    const boobsEarned = Math.floor(msg.content.length / 3);
+    if (boobsEarned > 0) balances.set(key, (balances.get(key) || 0) + boobsEarned);
   }
 });
 
@@ -234,4 +221,4 @@ client.on('guildMemberAdd', async member => {
   } catch (e) {}
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(TOKEN);
