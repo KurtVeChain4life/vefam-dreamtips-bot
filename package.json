@@ -1,0 +1,17 @@
+{
+  "name": "vechain-dreamtips-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.15.3",
+    "thor-devkit": "^2.1.4",
+    "crypto-js": "^4.2.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
