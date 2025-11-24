@@ -1,19 +1,20 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { mnemonic, HDNode } from 'thor-devkit';
 import pg from 'pg';
 import { Framework } from '@vechain/connex-framework';
-import { Driver, SimpleNet, SimpleWallet } from '@vechain/connex-driver-nodejs';
+import { Driver, SimpleNet } from '@vechain/connex-driver';
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-// VeChain Connex setup
+// Connex setup (voor on-chain balances)
 const net = new SimpleNet('https://mainnet.vechain.org/');
-const wallet = new SimpleWallet();
-const driver = await Driver.connect(net, wallet);
+const driver = await Driver.connect(net);
 const connex = new Framework(driver);
+
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT
 
 async function initDB() {
   await pool.query(`
@@ -29,20 +30,16 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT
-
 client.once('ready', async () => {
   await initDB();
-  console.log(`${client.user.tag} → VECHAIN TIPS LIVE`);
+  console.log(`${client.user.tag} → ALLES WERKT (SHOP + WALLET + MULTI-TOKEN)`);
 
   const commands = [
-    new SlashCommandBuilder().setName('balance').setDescription('Bekijk je balances'),
+    new SlashCommandBuilder().setName('balance').setDescription('Bekijk je balances (BOOBS + VET + VTHO)'),
     new SlashCommandBuilder().setName('daily').setDescription('Claim dagelijkse BOOBS'),
     new SlashCommandBuilder().setName('wallet').setDescription('Je VeChain wallet'),
     new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
-    new SlashCommandBuilder().setName('tip').setDescription('Tip iemand')
-      .addUserOption(o => o.setName('user').setDescription('Wie').setRequired(true)),
-    new SlashCommandBuilder().setName('shop').setDescription('Bekijk NFT shop'),
+    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
     new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
       .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
       .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
@@ -58,19 +55,33 @@ client.once('ready', async () => {
 });
 
 client.on('interactionCreate', async i => {
-  if (!i.isChatInputCommand() && !i.isStringSelectMenu() && !i.isButton()) return;
+  if (!i.isChatInputCommand() && !i.isButton()) return;
 
   const userId = i.user.id;
   const guildId = i.guild?.id || 'dm';
   const key = `${userId}:${guildId}`;
 
   try {
-    // BALANCE
+    // BALANCE (multi-token, met on-chain query voor VET/VTHO)
     if (i.commandName === 'balance') {
       const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
       const balData = rows[0]?.value || {};
       const boobs = balData.boobs || 0;
-      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw Balances').addFields({ name: 'BOOBS', value: `\`${boobs}\``, inline: true })], ephemeral: true });
+
+      // Query on-chain balances voor VET/VTHO (via Connex)
+      const walletAddr = await getUserAddress(key);
+      let vet = 0, vtho = 0;
+      if (walletAddr) {
+        const vetRes = await connex.thor.account(walletAddr).get();
+        vet = parseFloat(vetRes.balance) / 1e18;
+        vtho = parseFloat(vetRes.energy) / 1e18;
+      }
+
+      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw Balances').addFields(
+        { name: 'BOOBS', value: `\`${boobs}\``, inline: true },
+        { name: 'VET', value: `\`${vet.toFixed(2)}\``, inline: true },
+        { name: 'VTHO', value: `\`${vtho.toFixed(2)}\``, inline: true }
+      )], ephemeral: true });
     }
 
     // DAILY
@@ -88,7 +99,7 @@ client.on('interactionCreate', async i => {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS!').setDescription(`**${reward} BOOBS** erbij!`)] });
     }
 
-    // WALLET
+    // WALLET (gefixt – altijd adres)
     else if (i.commandName === 'wallet') {
       let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
       let hdNode, nextIndex = 0;
@@ -112,53 +123,6 @@ client.on('interactionCreate', async i => {
       const { rows } = await pool.query('SELECT key, value->>\'boobs\' as boobs FROM balances ORDER BY (value->>\'boobs\')::bigint DESC LIMIT 10');
       const lines = rows.length ? rows.map((r, i) => `${i+1}. <@${r.key.split(':')[0]}> → **${r.boobs}** BOOBS`).join('\n') : 'Nog niemand...';
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff1493').setTitle('Top 10 BOOBS Kings').setDescription(lines)] });
-    }
-
-    // TIP
-    else if (i.commandName === 'tip') {
-      const target = i.options.getUser('user');
-      if (!target || target.bot || target.id === userId) return i.reply({ content: 'Ongeldige target.', ephemeral: true });
-
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`tip_${userId}_${target.id}`)
-        .setPlaceholder('Kies wat je wil tippen...')
-        .addOptions([
-          { label: 'BOOBS', value: 'boobs', emoji: 'Boobs' },
-          { label: 'VET', value: 'vet', emoji: 'Diamond' },
-          { label: 'VTHO', value: 'vtho', emoji: 'Lightning' },
-          { label: 'B3TR', value: 'b3tr', emoji: 'Seedling' }
-        ]);
-
-      await i.reply({
-        content: `Wat wil je tippen aan ${target}?`,
-        components: [new ActionRowBuilder().addComponents(menu)],
-        ephemeral: true
-      });
-    }
-
-    // TIP SELECT
-    else if (i.isStringSelectMenu() && i.customId.startsWith('tip_')) {
-      const [, senderId, targetId] = i.customId.split('_');
-      if (senderId !== userId) return i.update({ content: 'Dit menu is niet voor jou!', components: [] });
-
-      const choice = i.values[0];
-      const target = await i.guild.members.fetch(targetId);
-
-      await i.update({ content: `Hoeveel **${choice.toUpperCase()}** wil je tippen aan ${target}?`, components: [] });
-
-      const collector = i.channel.createMessageCollector({ filter: m => m.author.id === userId, time: 30000, max: 1 });
-      collector.on('collect', async msg => {
-        const amount = parseInt(msg.content);
-        if (!amount || amount <= 0) return msg.reply('Ongeldig bedrag!');
-        const targetKey = `${targetId}:${guildId}`;
-        const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-        if ((rows[0]?.value || 0) < amount) return msg.reply('Niet genoeg BOOBS!');
-
-        await pool.query('UPDATE balances SET value = value - $1 WHERE key = $2', [amount, key]);
-        await pool.query('INSERT INTO balances (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = balances.value + $2', [targetKey, amount]);
-
-        await msg.reply(`${i.user} tipped **${amount} ${choice.toUpperCase()}** naar ${target}!`);
-      });
     }
 
     // SHOP
