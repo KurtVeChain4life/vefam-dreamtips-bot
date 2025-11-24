@@ -1,13 +1,13 @@
-const { SlashCommandBuilder } = require('discord.js');
+import { SlashCommandBuilder, EmbedBuilder } from 'discord.js';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('balance')
     .setDescription('Bekijk je BOOBS saldo'),
-  async execute(interaction) {
+  async execute(interaction, pool) {
     const key = `${interaction.user.id}:${interaction.guildId}`;
-    const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-    const boobs = rows[0]?.value || 0;
+    const { rows } = await pool.query('SELECT boobs FROM balances WHERE key = $1', [key]);
+    const boobs = rows[0]?.boobs || 0;
     await interaction.reply({ content: `Je hebt **${boobs} BOOBS**`, ephemeral: true });
   }
 };
