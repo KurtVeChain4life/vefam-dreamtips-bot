@@ -13,7 +13,7 @@ async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS users (
       key TEXT PRIMARY KEY,
-      boobs BIGINT DEFAULT 0,
+      boobs INT DEFAULT 0,
       last_daily BIGINT DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS wallets (
@@ -38,18 +38,18 @@ const client = new Client({
 
 client.once('ready', async () => {
   await initDB();
-  console.log(`${client.user.tag} → BOOBS BOT 100% LIVE`);
+  console.log(`${client.user.tag} → BOOBS BOT LIVE`);
 
   const cmds = [
-    new SlashCommandBuilder().setName('balance').setDescription('Hoeveel BOOBS heb je?'),
-    new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS'),
-    new SlashCommandBuilder().setName('wallet').setDescription('Je eigen VeChain adres'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS kings'),
-    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de shop'),
-    new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
+    new SlashCommandBuilder().setName('balance').setDescription('Je BOOBS saldo'),
+    new SlashCommandBuilder().setName('daily').setDescription('Claim dagelijkse BOOBS'),
+    new SlashCommandBuilder().setName('wallet').setDescription('Je VeChain adres'),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10'),
+    new SlashCommandBuilder().setName('shop').setDescription('Bekijk shop'),
+    new SlashCommandBuilder().setName('addnft').setDescription('Voeg NFT toe (owner)')
       .addStringOption(o => o.setName('title').setDescription('Titel').setRequired(true))
       .addStringOption(o => o.setName('description').setDescription('Omschrijving').setRequired(true))
-      .addIntegerOption(o => o.setName('price').setDescription('Prijs in BOOBS').setRequired(true))
+      .addIntegerOption(o => o.setName('price').setDescription('Prijs').setRequired(true))
       .addAttachmentOption(o => o.setName('image').setDescription('Afbeelding').setRequired(true))
   ].map(c => c.toJSON());
 
@@ -86,16 +86,16 @@ client.on('interactionCreate', async i => {
 
     if (i.commandName === 'wallet') {
       const guildId = i.guildId;
-      let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
+      let row = (await pool.query('SELECT * FROM wallets WHERE guild_id = $1', [guildId])).rows[0];
 
       if (!row) {
         const phrase = mnemonic.generate();
         const seed = mnemonic.toSeed(phrase);
         const hd = HDNode.fromSeed(seed);
         row = { seed: seed.toString('hex'), next_index: 0 };
-        await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1, $2, 1)', [guildId, row.seed]);
+        await pool.query('INSERT INTO wallets (guild_id, seed, next_index) VALUES ($1, $2, 1)', [guildId, row.seed]);
       } else {
-        await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
+        await pool.query('UPDATE wallets SET next_index = next_index + 1 WHERE guild_id = $1', [guildId]);
       }
 
       const hd = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
