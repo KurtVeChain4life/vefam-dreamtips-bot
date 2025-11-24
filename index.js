@@ -1,19 +1,17 @@
 import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { HDNode, mnemonic as thorMnemonic } from '@vechain/picatic'; // ← nieuwe import
+import { HDNode, mnemonic } from 'thor-devkit';
 import pg from 'pg';
 
-const { Pool } = pg;
-
-const pool = new Pool({
+const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
 async function initDB() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS balances      (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
-    CREATE TABLE IF NOT EXISTS lastdaily     (key TEXT PRIMARY KEY, timestamp BIGINT);
-    CREATE TABLE IF NOT EXISTS wallets       ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS balances  (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS lastdaily (key TEXT PRIMARY KEY, timestamp BIGINT);
+    CREATE TABLE IF NOT EXISTS wallets   ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
   `);
 }
 
@@ -21,7 +19,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-const OWNER_ID = 'JOUW_DISCORD_ID'; // ← vervang dit nog even
+const OWNER_ID = 'JOUW_DISCORD_ID'; // ← vervang dit één keer
 
 client.once('ready', async () => {
   await initDB();
@@ -32,12 +30,7 @@ client.once('ready', async () => {
     new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS'),
     new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
     new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
-    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
-    new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
-      .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
-      .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
-      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs').setRequired(true))
-      .addAttachmentOption(o => o.setName('afbeelding').setDescription('Afbeelding').setRequired(true))
+    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop')
   ].map(c => c.toJSON());
 
   for (const guild of client.guilds.cache.values()) {
@@ -66,8 +59,8 @@ client.on('interactionCreate', async i => {
       let hdNode, nextIndex = 0;
 
       if (!row) {
-        const phrase = thorMnemonic.generate();
-        const seed = thorMnemonic.toSeed(phrase);           // ← nieuwe manier
+        const phrase = mnemonic.generate();
+        const seed = mnemonic.toSeed(phrase); // ← dit werkt weer in thor-devkit 2.1.2
         hdNode = HDNode.fromSeed(seed);
         await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1,$2,$3)', [guildId, Buffer.from(seed).toString('hex'), 1]);
       } else {
@@ -97,7 +90,7 @@ client.on('interactionCreate', async i => {
 
   } catch (err) {
     console.error('Fout:', err);
-    if (!i.replied) await i.reply({ content: 'Er ging iets mis (DB)', ephemeral: true });
+    if (!i.replied) await i.reply({ content: 'Er ging iets mis', ephemeral: true });
   }
 });
 
