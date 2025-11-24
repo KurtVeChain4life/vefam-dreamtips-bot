@@ -86,16 +86,16 @@ client.on('interactionCreate', async i => {
 
     if (i.commandName === 'wallet') {
       const guildId = i.guildId;
-      let row = (await pool.query('SELECT * FROM wallets WHERE guild_id = $1', [guildId])).rows[0];
+      let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
 
       if (!row) {
         const phrase = mnemonic.generate();
         const seed = mnemonic.toSeed(phrase);
         const hd = HDNode.fromSeed(seed);
         row = { seed: seed.toString('hex'), next_index: 0 };
-        await pool.query('INSERT INTO wallets (guild_id, seed, next_index) VALUES ($1, $2, 1)', [guildId, row.seed]);
+        await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1, $2, 1)', [guildId, row.seed]);
       } else {
-        await pool.query('UPDATE wallets SET next_index = next_index + 1 WHERE guild_id = $1', [guildId]);
+        await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
       }
 
       const hd = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
