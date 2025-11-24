@@ -37,24 +37,30 @@ client.once('ready', async () => {
 
   // DB tabellen aanmaken
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS balances (
-      key TEXT PRIMARY KEY,
-      boobs BIGINT DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS lastdaily (
-      key TEXT PRIMARY KEY,
-      timestamp BIGINT
-    );
-    CREATE TABLE IF NOT EXISTS wallets (
-      "guildId" TEXT PRIMARY KEY,
-      seed TEXT NOT NULL,
-      "nextIndex" INTEGER DEFAULT 0
-    );
-    CREATE TABLE IF NOT EXISTS shopitems (
-      id TEXT PRIMARY KEY,
-      data JSONB NOT NULL
-    );
-  `);
+  DROP TABLE IF EXISTS balances, lastdaily, wallets, shopitems CASCADE;
+
+  CREATE TABLE balances (
+    key TEXT PRIMARY KEY,
+    boobs BIGINT DEFAULT 0
+  );
+
+  CREATE TABLE lastdaily (
+    key TEXT PRIMARY KEY,
+    timestamp BIGINT
+  );
+
+  CREATE TABLE wallets (
+    "guildId" TEXT PRIMARY KEY,
+    seed TEXT NOT NULL,
+    "nextIndex" INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE shopitems (
+    id TEXT PRIMARY KEY,
+    data JSONB NOT NULL
+  );
+`);
+console.log('Alle tabellen opnieuw aangemaakt – volledig schoon');
 
   // Register commands globaal
   const commands = [...client.commands.values()].map(cmd => cmd.data.toJSON());
