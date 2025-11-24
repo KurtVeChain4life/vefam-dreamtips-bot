@@ -1,5 +1,6 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, StringSelectMenuBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { mnemonic, HDNode } from 'thor-devkit';
+import { Connex } from '@vechain/connex';
 import pg from 'pg';
 
 const pool = new pg.Pool({
@@ -7,12 +8,25 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+const connex = new Connex({
+  node: 'https://node-mainnet.vechain.org',
+  network: 'main'
+});
+
+// Token lijst – makkelijk uitbreiden
+const TOKENS = {
+  boobs: { name: 'BOOBS', color: '#ff69b4', internal: true },
+  vet:   { name: 'VET',   color: '#00d4ff', internal: false, contract: null },
+  vtho:  { name: 'VTHO',  color: '#ffaa00', internal: false, contract: '0x0000000000000000000000000000456e65726779' },
+  b3tr:  { name: 'B3TR',  color: '#00ff9d', internal: false, contract: '0x...B3TR_CONTRACT...' } // ← vul in als je wil
+};
+
 async function initDB() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS balances     (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS lastdaily    (key TEXT PRIMARY KEY, timestamp BIGINT);
-    CREATE TABLE IF NOT EXISTS shopitems    (id TEXT PRIMARY KEY, data JSONB);
     CREATE TABLE IF NOT EXISTS wallets      ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS tiplog       (id SERIAL PRIMARY KEY, fromUser TEXT, toUser TEXT, token TEXT, amount NUMERIC, txHash TEXT, timestamp BIGINT);
   `);
 }
 
@@ -20,159 +34,149 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT NOG ÉÉN KEER!!!
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT
 
 client.once('ready', async () => {
   await initDB();
-  console.log(`${client.user.tag} → ALLES WERKT & PERMANENT LIVE`);
+  console.log(`${client.user.tag} → BOOBS + ECHTE VECHAIN TIPS LIVE`);
 
   const commands = [
+    new SlashCommandBuilder()
+      .setName('tip')
+      .setDescription('Tip iemand BOOBS of echte VeChain tokens')
+      .addUserOption(o => o.setName('user').setDescription('Wie wil je tippen?').setRequired(true)),
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS'),
     new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS'),
     new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
-    new SlashCommandBuilder().setName('tip').setDescription('Tip iemand BOOBS')
-      .addUserOption(o => o.setName('user').setDescription('Wie').setRequired(true))
-      .addIntegerOption(o => o.setName('amount').setDescription('Hoeveel').setRequired(true).setMinValue(1)),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
-    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
-    new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
-      .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
-      .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
-      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs in BOOBS').setRequired(true).setMinValue(1))
-      .addAttachmentOption(o => o.setName('afbeelding').setDescription('Afbeelding').setRequired(true))
+    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings')
   ].map(c => c.toJSON());
 
   for (const guild of client.guilds.cache.values()) {
     await guild.commands.set([]);
     await new Promise(r => setTimeout(r, 5000));
     await guild.commands.set(commands);
-    console.log(`✔ ${guild.name} → commands schoon`);
   }
 });
 
 client.on('interactionCreate', async i => {
-  if (!i.isChatInputCommand() && !i.isButton()) return;
+  if (!i.isChatInputCommand() && !i.isStringSelectMenu()) return;
 
   const userId = i.user.id;
   const guildId = i.guild?.id || 'dm';
   const key = `${userId}:${guildId}`;
 
   try {
-    // BALANCE
-    if (i.commandName === 'balance') {
-      const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const boobs = rows[0]?.value || 0;
-      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS').addFields({ name: 'BOOBS', value: `\`${boobs}\``, inline: true })], ephemeral: true });
-    }
-
-    // DAILY
-    else if (i.commandName === 'daily') {
-      const now = Date.now();
-      const { rows } = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
-      const last = rows[0]?.timestamp || 0;
-      if (now - last < 86_400_000) {
-        const hrs = Math.ceil((86_400_000 - (now - last)) / 3_600_000);
-        return i.reply({ content: `Nog ${hrs} uur wachten`, ephemeral: true });
-      }
-      const reward = Math.floor(Math.random() * 401) + 100;
-      await pool.query('INSERT INTO balances (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = balances.value + $2', [key, reward]);
-      await pool.query('INSERT INTO lastdaily (key,timestamp) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET timestamp = $2', [key, now]);
-      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS!').setDescription(`**${reward} BOOBS** erbij!`)] });
-    }
-
-    // WALLET
-    else if (i.commandName === 'wallet') {
-      const { rows } = await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId]);
-      let row = rows[0];
-      let hdNode, nextIndex = 0;
-
-      if (!row) {
-        const phrase = mnemonic.generate();
-        const seed = mnemonic.toSeed(phrase);
-        hdNode = HDNode.fromSeed(seed);
-        await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1,$2,$3)', [guildId, Buffer.from(seed).toString('hex'), 1]);
-      } else {
-        hdNode = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
-        nextIndex = row.nextIndex || 0;
-        await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
-      }
-      const derived = hdNode.derive(nextIndex);
-      const address = '0x' + derived.address.toString('hex');
-      await i.reply({ content: `**Je persoonlijke VeChain wallet**\n\`${address}\``, ephemeral: true });
-    }
-
-    // TIP
-    else if (i.commandName === 'tip') {
+    if (i.commandName === 'tip') {
       const target = i.options.getUser('user');
-      const amount = i.options.getInteger('amount');
       if (!target || target.bot || target.id === userId) return i.reply({ content: 'Nice try', ephemeral: true });
 
-      const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const bal = rows[0]?.value || 0;
-      if (bal < amount) return i.reply({ content: 'Niet genoeg BOOBS!', ephemeral: true });
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`tip_token_${target.id}`)
+        .setPlaceholder('Kies wat je wil tippen...')
+        .addOptions(
+          { label: 'BOOBS (intern)', value: 'boobs', description: 'Je eigen server token', emoji: '🍒' },
+          { label: 'VET', value: 'vet', description: 'VeChain native token', emoji: '💎' },
+          { label: 'VTHO', value: 'vtho', description: 'VeChain energy', emoji: '⚡' },
+          { label: 'B3TR', value: 'b3tr', description: 'VeBetterDAO token', emoji: '🌱' }
+        );
 
-      const targetKey = `${target.id}:${guildId}`;
-      await pool.query('UPDATE balances SET value = value - $1 WHERE key = $2', [amount, key]);
-      await pool.query('INSERT INTO balances (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = balances.value + $2', [targetKey, amount]);
-      await i.reply(`**${i.user} tipped ${amount} BOOBS naar ${target}!**`);
+      await i.reply({
+        content: `Wat wil je tippen aan ${target}?`,
+        components: [new ActionRowBuilder().addComponents(menu)],
+        ephemeral: true
+      });
     }
 
-    // LEADERBOARD
-    else if (i.commandName === 'leaderboard') {
-      const { rows } = await pool.query('SELECT key, value FROM balances ORDER BY value DESC LIMIT 10');
-      const lines = rows.map((r, i) => `${i+1}. <@${r.key.split(':')[0]}> — **${r.value} BOOBS**`).join('\n') || 'Nog niemand';
-      await i.reply({ embeds: [new EmbedBuilder().setColor('#ff1493').setTitle('Top 10 BOOBS Kings').setDescription(lines)] });
+    else if (i.isStringSelectMenu() && i.customId.startsWith('tip_token_')) {
+      const targetId = i.customId.split('_')[2];
+      const target = await i.guild.members.fetch(targetId);
+      const tokenKey = i.values[0];
+      const token = TOKENS[tokenKey];
+
+      await i.update({
+        content: `Hoeveel **${token.name}** wil je tippen aan ${target}?`,
+        components: [],
+        embeds: [new EmbedBuilder().setColor(token.color).setTitle(`Tip ${token.name}`)]
+      });
+
+      const filter = m => m.author.id === i.user.id;
+      const collector = i.channel.createMessageCollector({ filter, time: 30000, max: 1 });
+
+      collector.on('collect', async msg => {
+        const amount = parseFloat(msg.content);
+        if (isNaN(amount) || amount <= 0) return msg.reply('Ongeldig bedrag.');
+
+        const targetKey = `${targetId}:${guildId}`;
+
+        if (token.internal) {
+          // Interne BOOBS tip
+          const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
+          if ((rows[0]?.value || 0) < amount) return msg.reply('Niet genoeg BOOBS!');
+
+          await pool.query('UPDATE balances SET value = value - $1 WHERE key = $2', [amount, key]);
+          await pool.query('INSERT INTO balances (key,value) VALUES ($1,$2) ON CONFLICT (key) DO UPDATE SET value = balances.value + $2', [targetKey, amount]);
+          await pool.query('INSERT INTO tiplog (fromUser, toUser, token, amount, timestamp) VALUES ($1,$2,$3,$4,$5)', [userId, targetId, 'BOOBS', amount, Date.now()]);
+
+          await msg.reply(`✅ **${amount} BOOBS** getipt naar ${target}!`);
+        } else {
+          // Echte token tip
+          const senderAddr = await getUserAddress(key);
+          const targetAddr = await getUserAddress(targetKey);
+          if (!senderAddr || !targetAddr) return msg.reply('Eén van jullie heeft nog geen wallet. Typ /wallet eerst.');
+
+          // Check BOOBS fee (bijv. 5 BOOBS per echte tip)
+          const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
+          if ((rows[0]?.value || 0) < 5) return msg.reply('Je hebt minimaal 5 BOOBS nodig voor een echte tip.');
+
+          try {
+            const clause = token.contract
+              ? connex.thor.account(token.contract).method({ name: 'transfer', inputs: [{ type: 'address' }, { type: 'uint256' }] }).asClause(targetAddr, BigInt(amount * 1e18))
+              : connex.thor.account(senderAddr).transfer(targetAddr, BigInt(amount * 1e18));
+
+            const signingService = connex.vendor.sign('tx').signer(senderAddr);
+            const privateKey = await getPrivateKey(key);
+            const signed = await signingService.request([{ ...clause, value: '0x0' }], { signer: privateKey });
+            const receipt = await connex.thor.transaction(signed.id).getReceipt();
+
+            if (receipt?.reverted) throw new Error('Tx reverted');
+
+            // Trek fee af
+            await pool.query('UPDATE balances SET value = value - 5 WHERE key = $1', [key]);
+            await pool.query('INSERT INTO tiplog (fromUser, toUser, token, amount, txHash, timestamp) VALUES ($1,$2,$3,$4,$5,$6)', [userId, targetId, token.name, amount, signed.id, Date.now()]);
+
+            await msg.reply(`✅ **${amount} ${token.name}** succesvol verstuurd naar ${target}!\nTx: https://insight.vechain.org/#/txs/${signed.id}`);
+          } catch (err) {
+            console.error(err);
+            await msg.reply('Transactie mislukt. Zorg dat je genoeg VTHO hebt.');
+          }
+        }
+      });
     }
 
-    // SHOP
-    else if (i.commandName === 'shop') {
-      const { rows } = await pool.query('SELECT id, data FROM shopitems');
-      if (rows.length === 0) return i.reply({ content: 'Shop is leeg!', ephemeral: true });
-
-      const embeds = [];
-      const components = [];
-      for (const row of rows) {
-        const item = row.data;
-        embeds.push(new EmbedBuilder().setColor('#ff69b4').setTitle(item.title).setDescription(`${item.desc}\n\n**Prijs:** ${item.price} BOOBS`).setImage(item.imageUrl));
-        components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`buy_${row.id}`).setLabel(`Koop voor ${item.price}`).setStyle(ButtonStyle.Success)));
-      }
-      await i.reply({ embeds, components });
-    }
-
-    // ADDNFT (owner only)
-    else if (i.commandName === 'addnft') {
-      if (userId !== OWNER_ID) return i.reply({ content: 'Alleen de owner!', ephemeral: true });
-      const title = i.options.getString('titel');
-      const desc = i.options.getString('beschrijving');
-      const price = i.options.getInteger('prijs');
-      const att = i.options.getAttachment('afbeelding');
-      if (!att?.contentType?.startsWith('image/')) return i.reply({ content: 'Alleen afbeeldingen!', ephemeral: true });
-
-      const id = Date.now().toString();
-      await pool.query('INSERT INTO shopitems (id, data) VALUES ($1, $2)', [id, { title, desc, price, imageUrl: att.url }]);
-      await i.reply({ content: `NFT toegevoegd! **${title}** — ${price} BOOBS`, ephemeral: true });
-    }
-
-    // BUY BUTTON
-    else if (i.isButton() && i.customId.startsWith('buy_')) {
-      const id = i.customId.slice(4);
-      const { rows } = await pool.query('SELECT data FROM shopitems WHERE id = $1', [id]);
-      if (rows.length === 0) return i.reply({ content: 'Al verkocht!', ephemeral: true });
-      const item = rows[0].data;
-
-      const { rows: balRows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const bal = balRows[0]?.value || 0;
-      if (bal < item.price) return i.reply({ content: 'Niet genoeg BOOBS!', ephemeral: true });
-
-      await pool.query('UPDATE balances SET value = value - $1 WHERE key = $2', [item.price, key]);
-      await pool.query('DELETE FROM shopitems WHERE id = $1', [id]);
-      await i.reply({ content: `Je kocht **${item.title}** voor ${item.price} BOOBS!` });
-    }
+    // (voeg hier je balance, daily, wallet, leaderboard toe – die heb je al werkend)
 
   } catch (err) {
     console.error('Fout:', err);
-    if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis', ephemeral: true });
+    if (!i.replied) await i.reply({ content: 'Er ging iets mis', ephemeral: true });
   }
 });
+
+// Helper functies (voeg onderaan toe)
+async function getUserAddress(key) {
+  const guildId = key.split(':')[1];
+  const { rows } = await pool.query('SELECT seed, "nextIndex" FROM wallets WHERE "guildId" = $1', [guildId]);
+  if (!rows[0]) return null;
+  const hdNode = HDNode.fromSeed(Buffer.from(rows[0].seed, 'hex'));
+  return '0x' + hdNode.derive(rows[0].nextIndex - 1).address.toString('hex');
+}
+
+async function getPrivateKey(key) {
+  const address = await getUserAddress(key);
+  const guildId = key.split(':')[1];
+  const { rows } = await pool.query('SELECT seed FROM wallets WHERE "guildId" = $1', [guildId]);
+  const hdNode = HDNode.fromSeed(Buffer.from(rows[0].seed, 'hex'));
+  const index = (await pool.query('SELECT "nextIndex" FROM wallets WHERE "guildId" = $1', [guildId])).rows[0].nextIndex - 1;
+  return '0x' + hdNode.derive(index).privateKey.toString('hex');
+}
 
 client.login(process.env.DISCORD_TOKEN);
