@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
-import { mnemonic, HDNode } from 'thor-devkit';
+import { mnemonic, HDNode, address } from 'thor-devkit';
 
 export default {
   data: new SlashCommandBuilder()
@@ -9,13 +9,13 @@ export default {
   async execute(interaction, pool) {
     const guildId = interaction.guildId;
 
-    // Haal of maak guild wallet seed
     let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
 
     if (!row) {
-      const phrase = mnemonic.generate();                    // 12 woorden
-      const privateKey = HDNode.fromMnemonic(phrase).privateKey; // ← NIEUWE METHODE
-      const seedHex = privateKey.toString('hex');
+      // Nieuwe guild → nieuwe master seed
+      const phrase = mnemonic.generate();
+      const masterNode = HDNode.fromMnemonic(phrase);
+      const seedHex = masterNode.privateKey.toString('hex');
 
       await pool.query(
         'INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1, $2, 1)',
@@ -26,12 +26,13 @@ export default {
       await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
     }
 
-    // Derive adres
-    const hdNode = HDNode.fromPrivateKey(Buffer.from(row.seed, 'hex'));
-    const address = '0x' + hdNode.derive(row.nextIndex || 0).address.toString('hex');
+    // Derive het volgende adres van de master private key
+    const masterNode = HDNode.fromPrivateKey(Buffer.from(row.seed, 'hex'));
+    const childNode = masterNode.derive(row.nextIndex || 0);
+    const vechainAddress = address.toVC(childNode.address.toString('hex'));
 
     await interaction.reply({
-      content: `**Jouw persoonlijke VeChain wallet**\n\`${address}\`\nSeed wordt veilig bewaard op de server`,
+      content: `**Jouw persoonlijke VeChain wallet**\n\`${vechainAddress}\`\n(Elke gebruiker krijgt een uniek adres)`,
       ephemeral: true
     });
   }
