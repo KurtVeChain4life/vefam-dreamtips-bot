@@ -1,57 +1,42 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { mnemonic, HDNode } from 'thor-devkit';
+import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
+import { HDNode, mnemonic as thorMnemonic } from '@vechain/picatic'; // ← nieuwe import
 import pg from 'pg';
 
 const { Pool } = pg;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+  ssl: { rejectUnauthorized: false }
 });
 
 async function initDB() {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS balances      (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
-      CREATE TABLE IF NOT EXISTS lastdaily     (key TEXT PRIMARY KEY, timestamp BIGINT);
-      CREATE TABLE IF NOT EXISTS shopitems     (id TEXT PRIMARY KEY, data JSONB);
-      CREATE TABLE IF NOT EXISTS wallets       ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
-    `);
-    console.log('Database tables klaar');
-  } catch (e) {
-    console.error('DB init fout:', e);
-  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS balances      (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS lastdaily     (key TEXT PRIMARY KEY, timestamp BIGINT);
+    CREATE TABLE IF NOT EXISTS wallets       ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
+  `);
 }
 
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT EENMALIG!!!
+const OWNER_ID = 'JOUW_DISCORD_ID'; // ← vervang dit nog even
 
 client.once('ready', async () => {
   await initDB();
-
-  console.log(`${client.user.tag} → 100% LIVE MET PERMANENTE DATABASE`);
+  console.log(`${client.user.tag} → 100% LIVE & PERMANENT`);
 
   const commands = [
     new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS'),
-    new SlashCommandBuilder().setName('tip').setDescription('Tip iemand BOOBS')
-      .addUserOption(o => o.setName('user').setDescription('Wie').setRequired(true))
-      .addIntegerOption(o => o.setName('amount').setDescription('Hoeveel').setRequired(true).setMinValue(1)),
     new SlashCommandBuilder().setName('daily').setDescription('Claim je dagelijkse BOOBS'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
     new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS-kings'),
     new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
     new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
       .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
       .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
-      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs').setRequired(true).setMinValue(1))
+      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs').setRequired(true))
       .addAttachmentOption(o => o.setName('afbeelding').setDescription('Afbeelding').setRequired(true))
   ].map(c => c.toJSON());
 
@@ -59,14 +44,11 @@ client.once('ready', async () => {
     await guild.commands.set([]);
     await new Promise(r => setTimeout(r, 5000));
     await guild.commands.set(commands);
-    console.log(`✔ ${guild.name} → commands schoon`);
   }
-
-  console.log('Bot volledig klaar – alles blijft bewaard!');
 });
 
 client.on('interactionCreate', async i => {
-  if (!i.isChatInputCommand() && !i.isButton()) return;
+  if (!i.isChatInputCommand()) return;
 
   const userId = i.user.id;
   const guildId = i.guild?.id || 'dm';
@@ -81,19 +63,20 @@ client.on('interactionCreate', async i => {
 
     else if (i.commandName === 'wallet') {
       let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
-      let masterNode, nextIndex = 0;
+      let hdNode, nextIndex = 0;
 
       if (!row) {
-        const phrase = mnemonic.generate();
-        const seed = mnemonic.toSeed(phrase);
-        masterNode = HDNode.fromSeed(seed);
+        const phrase = thorMnemonic.generate();
+        const seed = thorMnemonic.toSeed(phrase);           // ← nieuwe manier
+        hdNode = HDNode.fromSeed(seed);
         await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1,$2,$3)', [guildId, Buffer.from(seed).toString('hex'), 1]);
       } else {
-        masterNode = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
+        hdNode = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
         nextIndex = row.nextIndex || 0;
         await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
       }
-      const derived = masterNode.derive(nextIndex);
+
+      const derived = hdNode.derive(nextIndex);
       const address = '0x' + derived.address.toString('hex');
       await i.reply({ content: `**Je persoonlijke VeChain wallet**\n\`${address}\``, ephemeral: true });
     }
@@ -112,11 +95,9 @@ client.on('interactionCreate', async i => {
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Daily BOOBS!').setDescription(`**${reward} BOOBS** erbij!`)] });
     }
 
-    // Voeg hier later tip, leaderboard, shop, addnft, buy toe – die komen in de volgende versie als deze draait
-
   } catch (err) {
     console.error('Fout:', err);
-    if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis (DB)', ephemeral: true });
+    if (!i.replied) await i.reply({ content: 'Er ging iets mis (DB)', ephemeral: true });
   }
 });
 
