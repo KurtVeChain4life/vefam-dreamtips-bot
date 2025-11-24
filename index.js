@@ -32,7 +32,7 @@ const client = new Client({
   ]
 });
 
-const OWNER_ID = '495648570968637452'; // ← VERVANG DIT EENMALIG!!!
+const OWNER_ID = 'JOUW_DISCORD_ID'; // ← VERVANG DIT EENMALIG!!!
 
 client.once('ready', async () => {
   await initDB();
@@ -118,9 +118,6 @@ client.on('interactionCreate', async i => {
     console.error('Fout:', err);
     if (!i.replied && !i.deferred) await i.reply({ content: 'Er ging iets mis (DB)', ephemeral: true });
   }
-});
-
-client.login(process.env.DISCORD_TOKEN);
 });
 
 client.login(process.env.DISCORD_TOKEN);
