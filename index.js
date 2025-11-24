@@ -29,7 +29,7 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
 
-const OWNER_ID = 'JOUW_DISCORD_ID'; // ← VERVANG DIT
+const OWNER_ID = '495648570968637452'; // ← VERVANG DIT
 
 client.once('ready', async () => {
   await initDB();
