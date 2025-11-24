@@ -1,5 +1,5 @@
 import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder } from 'discord.js';
-import { HDNode, mnemonic } from 'thor-devkit';
+import { mnemonic, HDNode } from 'thor-devkit';
 import pg from 'pg';
 
 const pool = new pg.Pool({
@@ -18,8 +18,6 @@ async function initDB() {
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent, GatewayIntentBits.GuildMembers]
 });
-
-const OWNER_ID = 'JOUW_DISCORD_ID'; // ← vervang dit één keer
 
 client.once('ready', async () => {
   await initDB();
@@ -49,18 +47,19 @@ client.on('interactionCreate', async i => {
 
   try {
     if (i.commandName === 'balance') {
-      const res = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const boobs = res.rows[0]?.value || 0;
+      const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
+      const boobs = rows[0]?.value || 0;
       await i.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Jouw BOOBS').addFields({ name: 'BOOBS', value: `\`${boobs}\``, inline: true })], ephemeral: true });
     }
 
     else if (i.commandName === 'wallet') {
-      let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
+      const { rows } = await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId]);
+      let row = rows[0];
       let hdNode, nextIndex = 0;
 
       if (!row) {
         const phrase = mnemonic.generate();
-        const seed = mnemonic.toSeed(phrase); // ← dit werkt weer in thor-devkit 2.1.2
+        const seed = mnemonic.toSeed(phrase);
         hdNode = HDNode.fromSeed(seed);
         await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1,$2,$3)', [guildId, Buffer.from(seed).toString('hex'), 1]);
       } else {
@@ -76,8 +75,8 @@ client.on('interactionCreate', async i => {
 
     else if (i.commandName === 'daily') {
       const now = Date.now();
-      const res = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
-      const last = res.rows[0]?.timestamp || 0;
+      const { rows } = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
+      const last = rows[0]?.timestamp || 0;
       if (now - last < 86_400_000) {
         const hrs = Math.ceil((86_400_000 - (now - last)) / 3_600_000);
         return i.reply({ content: `Nog ${hrs} uur wachten`, ephemeral: true });
