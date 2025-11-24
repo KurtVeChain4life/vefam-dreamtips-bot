@@ -1,10 +1,11 @@
-import { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+// commands/tip.js
+import { SlashCommandBuilder } from 'discord.js';
 
-module.exports = {
+export default {
   data: new SlashCommandBuilder()
     .setName('tip')
-    .setDescription('Tip iemand'),
+    .setDescription('Nog niet geïmplementeerd'),
   async execute(interaction) {
-    await interaction.reply({ content: 'Tip command in ontwikkeling!', ephemeral: true });
+    await interaction.reply({ content: 'Tip command komt later!', ephemeral: true });
   }
 };
