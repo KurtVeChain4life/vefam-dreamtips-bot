@@ -94,7 +94,7 @@ client.on('interactionCreate', async i => {
 
       const hd = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
       const addr = '0x' + hd.derive(row.next_index || 0).address.toString('hex');
-      await i.reply({ content: `**Jouw VeChain adres**\n\`${addr}\``, ephemeral: true });
+      await i.reply({ content: `...`, flags: 64 }); // 64 = InteractionResponseFlags.Ephemeral
     }
 
     // LEADERBOARD
