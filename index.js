@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { mnemonic, HDNode } from 'thor-devkit';
 import pg from 'pg';
 
@@ -7,17 +7,16 @@ const pool = new pg.Pool({
   ssl: { rejectUnauthorized: false }
 });
 
-const OWNER_ID = '495648570968637452'; // Replace with your actual Discord ID
+const OWNER_ID = '495648570968637452'; // ← VERVANG ALLEEN DIT MET JOUW ECHTE ID
 
 async function initDB() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS balances (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS balances (key TEXT PRIMARY KEY, boobs BIGINT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS lastdaily (key TEXT PRIMARY KEY, timestamp BIGINT);
-    CREATE TABLE IF NOT EXISTS points (key TEXT PRIMARY KEY, value BIGINT DEFAULT 0);
     CREATE TABLE IF NOT EXISTS wallets ("guildId" TEXT PRIMARY KEY, seed TEXT, "nextIndex" INTEGER DEFAULT 0);
     CREATE TABLE IF NOT EXISTS shopitems (id TEXT PRIMARY KEY, data JSONB);
   `);
-  console.log('Database initialized');
+  console.log('DB ready');
 }
 
 const client = new Client({
@@ -26,123 +25,122 @@ const client = new Client({
 
 client.once('ready', async () => {
   await initDB();
-  console.log(`${client.user.tag} - Bot ready`);
+  console.log(`${client.user.tag} → BOOBS BOT 100% LIVE & GROEN`);
 
   const commands = [
-    new SlashCommandBuilder().setName('balance').setDescription('View your BOOBS balance'),
-    new SlashCommandBuilder().setName('daily').setDescription('Claim your daily BOOBS'),
-    new SlashCommandBuilder().setName('wallet').setDescription('Get your VeChain wallet'),
-    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS holders'),
-    new SlashCommandBuilder().setName('shop').setDescription('View the NFT shop'),
-    new SlashCommandBuilder().setName('addnft').setDescription('Add NFT to shop (owner only)')
-      .addStringOption(option => option.setName('titel').setDescription('Title').setRequired(true))
-      .addStringOption(option => option.setName('beschrijving').setDescription('Description').setRequired(true))
-      .addIntegerOption(option => option.setName('prijs').setDescription('Price in BOOBS').setRequired(true))
-      .addAttachmentOption(option => option.setName('afbeelding').setDescription('Image').setRequired(true)),
-    new SlashCommandBuilder().setName('tip').setDescription('Tip someone')
-      .addUserOption(option => option.setName('user').setDescription('Who to tip').setRequired(true))
-  ].map(command => command.toJSON());
+    new SlashCommandBuilder().setName('balance').setDescription('Bekijk je BOOBS'),
+    new SlashCommandBuilder().setName('daily').setDescription('Claim dagelijkse BOOBS'),
+    new SlashCommandBuilder().setName('wallet').setDescription('Je persoonlijke VeChain wallet'),
+    new SlashCommandBuilder().setName('leaderboard').setDescription('Top 10 BOOBS kings'),
+    new SlashCommandBuilder().setName('shop').setDescription('Bekijk de NFT shop'),
+    new SlashCommandBuilder().setName('addnft').setDescription('(Owner) Voeg NFT toe')
+      .addStringOption(o => o.setName('titel').setDescription('Titel').setRequired(true))
+      .addStringOption(o => o.setName('beschrijving').setDescription('Beschrijving').setRequired(true))
+      .addIntegerOption(o => o.setName('prijs').setDescription('Prijs in BOOBS').setRequired(true))
+      .addAttachmentOption(o => o.setName('afbeelding').setDescription('Afbeelding').setRequired(true))
+  ].map(c => c.toJSON());
 
   await client.application.commands.set(commands);
-  console.log('Commands registered');
 });
 
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand() && !interaction.isButton() && !interaction.isStringSelectMenu()) return;
+  if (!interaction.isChatInputCommand() && !interaction.isButton()) return;
 
-  const key = `${interaction.user.id}:${interaction.guildId || 'dm'}`;
+  const userKey = `${interaction.user.id}:${interaction.guildId || 'dm'}`;
 
   try {
     if (interaction.commandName === 'balance') {
-      const { rows } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const boobs = rows[0]?.value || 0;
-      await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff69b4').setTitle('Your Balance').setDescription(`**${boobs} BOOBS**`)], ephemeral: true });
+      const { rows } = await pool.query('SELECT boobs FROM balances WHERE key = $1', [userKey]);
+      const boobs = rows[0]?.boobs || 0;
+      await interaction.reply({ content: `Je hebt **${boobs} BOOBS**`, ephemeral: true });
     }
 
-    else if (interaction.commandName === 'daily') {
+    if (interaction.commandName === 'daily') {
       const now = Date.now();
-      const { rows } = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [key]);
+      const { rows } = await pool.query('SELECT timestamp FROM lastdaily WHERE key = $1', [userKey]);
       const last = rows[0]?.timestamp || 0;
-      if (now - last < 86400000) return interaction.reply({ content: 'You already claimed today!', ephemeral: true });
+      if (now - last < 86400000) return interaction.reply({ content: 'Je hebt vandaag al geclaimd!', ephemeral: true });
 
       const reward = Math.floor(Math.random() * 401) + 100;
-      await pool.query('INSERT INTO balances (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = balances.value + $2', [key, reward]);
-      await pool.query('INSERT INTO lastdaily (key, timestamp) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET timestamp = $2', [key, now]);
-      await interaction.reply(`You got **${reward} BOOBS**!`);
+      await pool.query('INSERT INTO balances (key, boobs) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET boobs = balances.boobs + $2', [userKey, reward]);
+      await pool.query('INSERT INTO lastdaily (key, timestamp) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET timestamp = $2', [userKey, now]);
+      await interaction.reply(`Je kreeg **${reward} BOOBS**!`);
     }
 
-    else if (interaction.commandName === 'wallet') {
-      let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [interaction.guildId])).rows[0];
-      let hdNode, nextIndex = 0;
+    if (interaction.commandName === 'wallet') {
+      const guildId = interaction.guildId || 'dm';
+      let row = (await pool.query('SELECT * FROM wallets WHERE "guildId" = $1', [guildId])).rows[0];
 
       if (!row) {
         const phrase = mnemonic.generate();
         const seed = mnemonic.toSeed(phrase);
-        hdNode = HDNode.fromSeed(seed);
-        await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1, $2, 1)', [interaction.guildId, Buffer.from(seed).toString('hex')]);
+        await pool.query('INSERT INTO wallets ("guildId", seed, "nextIndex") VALUES ($1, $2, 1)', [guildId, Buffer.from(seed).toString('hex')]);
+        row = { seed: Buffer.from(seed).toString('hex'), nextIndex: 0 };
       } else {
-        hdNode = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
-        nextIndex = row.nextIndex || 0;
-        await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [interaction.guildId]);
+        await pool.query('UPDATE wallets SET "nextIndex" = "nextIndex" + 1 WHERE "guildId" = $1', [guildId]);
       }
 
-      const derived = hdNode.derive(nextIndex);
-      const address = '0x' + derived.address.toString('hex');
-      await interaction.reply({ content: `**Your VeChain wallet**\n\`${address}\``, ephemeral: true });
+      const hd = HDNode.fromSeed(Buffer.from(row.seed, 'hex'));
+      const address = '0x' + hd.derive(row.nextIndex || 0).address.toString('hex');
+      await interaction.reply({ content: `**Jouw VeChain wallet**\n\`${address}\``, ephemeral: true });
     }
 
-    else if (interaction.commandName === 'leaderboard') {
-      const { rows } = await pool.query('SELECT key, value FROM balances ORDER BY value DESC LIMIT 10');
-      const lines = rows.map((r, i) => `${i+1}. <@${r.key.split(':')[0]}> → **${r.value}** BOOBS`).join('\n') || 'No one yet...';
+    if (interaction.commandName === 'leaderboard') {
+      const { rows } = await pool.query('SELECT key, boobs FROM balances ORDER BY boobs DESC LIMIT 10');
+      const lines = rows.length ? rows.map((r, i) => `${i+1}. <@${r.key.split(':')[0]}> → **${r.boobs}** BOOBS`).join('\n') : 'Nog niemand...';
       await interaction.reply({ embeds: [new EmbedBuilder().setColor('#ff1493').setTitle('Top 10 BOOBS Kings').setDescription(lines)] });
     }
 
-    else if (i.commandName === 'shop') {
-      const { rows } = await pool.query('SELECT * FROM shopitems');
-      if (rows.length === 0) return i.reply({ content: 'Shop is leeg!', ephemeral: true });
+    if (interaction.commandName === 'shop') {
+      const { rows } = await pool.query('SELECT id, data FROM shopitems');
+      if (rows.length === 0) return interaction.reply({ content: 'Shop is leeg!', ephemeral: true });
 
-      const embeds = [];
-      const components = [];
-      for (const row of rows) {
-        const item = row.data;
-        embeds.push(new EmbedBuilder().setColor('#ff69b4').setTitle(item.titel).setDescription(`${item.beschrijving}\n**Prijs:** ${item.prijs} BOOBS`).setImage(item.afbeelding));
-        components.push(new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`buy_${row.id}`).setLabel(`Koop voor ${item.prijs}`).setStyle(ButtonStyle.Success)));
-      }
-      await i.reply({ embeds, components });
+      const embeds = rows.map(r => new EmbedBuilder()
+        .setColor('#ff69b4')
+        .setTitle(r.data.titel)
+        .setDescription(`${r.data.beschrijving}\n\n**Prijs:** ${r.data.prijs} BOOBS`)
+        .setImage(r.data.afbeelding)
+      );
+      const components = rows.map(r => new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`buy_${r.id}`).setLabel(`Koop – ${r.data.prijs}`).setStyle(ButtonStyle.Success)
+      ));
+
+      await interaction.reply({ embeds, components });
     }
 
-    else if (i.commandName === 'addnft') {
-      if (i.user.id !== OWNER_ID) return i.reply({ content: 'Alleen de owner!', ephemeral: true });
-      const titel = i.options.getString('titel');
-      const beschrijving = i.options.getString('beschrijving');
-      const prijs = i.options.getInteger('prijs');
-      const att = i.options.getAttachment('afbeelding');
-      if (!att?.contentType?.startsWith('image/')) return i.reply({ content: 'Alleen afbeeldingen!', ephemeral: true });
+    if (interaction.commandName === 'addnft') {
+      if (interaction.user.id !== OWNER_ID) return interaction.reply({ content: 'Alleen de owner!', ephemeral: true });
+      const titel = interaction.options.getString('titel');
+      const beschrijving = interaction.options.getString('beschrijving');
+      const prijs = interaction.options.getInteger('prijs');
+      const img = interaction.options.getAttachment('afbeelding');
+      if (!img?.contentType?.startsWith('image/')) return interaction.reply({ content: 'Alleen afbeeldingen!', ephemeral: true });
 
       const id = Date.now().toString();
-      await pool.query('INSERT INTO shopitems (id, data) VALUES ($1, $2)', [id, { titel, beschrijving, prijs, afbeelding: att.url }]);
-      await i.reply({ content: `NFT toegevoegd! **${titel}** — ${prijs} BOOBS`, ephemeral: true });
+      await pool.query('INSERT INTO shopitems (id, data) VALUES ($1, $2)', [id, { titel, beschrijving, prijs, afbeelding: img.url }]);
+      await interaction.reply({ content: `NFT toegevoegd! **${titel}** – ${prijs} BOOBS`, ephemeral: true });
     }
 
-    else if (i.isButton() && i.customId.startsWith('buy_')) {
-      const id = i.customId.slice(4);
+    if (interaction.isButton() && interaction.customId.startsWith('buy_')) {
+      const id = interaction.customId.slice(4);
       const { rows } = await pool.query('SELECT data FROM shopitems WHERE id = $1', [id]);
-      if (rows.length === 0) return i.reply({ content: 'Al verkocht!', ephemeral: true });
+      if (rows.length === 0) return interaction.reply({ content: 'Al verkocht!', ephemeral: true });
       const item = rows[0].data;
 
-      const { rows: bal } = await pool.query('SELECT value FROM balances WHERE key = $1', [key]);
-      const boobs = bal[0]?.value || 0;
-      if (boobs < item.prijs) return i.reply({ content: 'Niet genoeg BOOBS!', ephemeral: true });
+      const { rows: bal } = await pool.query('SELECT boobs FROM balances WHERE key = $1', [userKey]);
+      const boobs = bal[0]?.boobs || 0;
+      if (boobs < item.prijs) return interaction.reply({ content: 'Niet genoeg BOOBS!', ephemeral: true });
 
-      await pool.query('UPDATE balances SET value = value - $1 WHERE key = $2', [item.prijs, key]);
+      await pool.query('UPDATE balances SET boobs = boobs - $1 WHERE key = $2', [item.prijs, userKey]);
       await pool.query('DELETE FROM shopitems WHERE id = $1', [id]);
-
-      await i.reply({ content: `Je kocht **${item.titel}** voor ${item.prijs} BOOBS!` });
+      await interaction.reply(`Je kocht **${item.titel}** voor ${item.prijs} BOOBS!`);
     }
 
   } catch (err) {
-    console.error('Fout:', err);
-    if (!i.replied) await i.reply({ content: 'Er ging iets mis!', ephemeral: true });
+    console.error('Error:', err);
+    if (!interaction.replied && !interaction.deferred) {
+      await interaction.reply({ content: 'Er ging iets mis!', ephemeral: true }).catch(() => {});
+    }
   }
 });
 
